@@ -4,7 +4,7 @@
 // @name:zh-TW   YouTube 行動版精簡：首頁與原生播放器
 // @name:ja      YouTube Mobile Lite：シンプルホーム＆ネイティブプレーヤー
 // @namespace    https://github.com/AQJK/youtube-mobile-lite
-// @version      0.2.0
+// @version      0.2.1
 // @description  Rebuilds YouTube mobile with an iOS-style pure video feed (Recommended & Subscriptions), creator profiles, native comments, high-quality DASH/HLS playback, background audio, search, and playlists—with zero Shorts.
 // @description:zh-CN 将 YouTube 移动版重构为无 Shorts 的 iOS 风格纯视频流（推荐与订阅）、创作者主页与原生评论区，支持高画质 DASH/HLS、后台音频、搜索与播放列表。
 // @description:zh-TW 將 YouTube 行動版重構為無 Shorts 的 iOS 風格純影片流（推薦與訂閱）、創作者主頁與原生留言區，支援高畫質 DASH/HLS、背景音訊、搜尋與播放清單。
@@ -763,12 +763,12 @@
     }
   }
 
-  // Home hosts four feed tabs; each one owns a stable path so deep links and
+  // Home hosts three feed tabs; each one owns a stable path so deep links and
   // reloads land on the same tab. `/feed/history` and `/feed/watch-later` are
-  // ours: they route to the home shell instead of YouTube's own pages.
+  // ours: they route to the home shell instead of YouTube's own pages. The old
+  // `/feed/subscriptions` path stays owned as an alias for Recommended.
   const HOME_TAB_DEFS = [
     { id: "recommended", path: "/", labelKey: "homeRecommended" },
-    { id: "subscriptions", path: "/feed/subscriptions", labelKey: "homeSubscriptions" },
     { id: "history", path: "/feed/history", labelKey: "homeHistory" },
     { id: "watchLater", path: "/feed/watch-later", labelKey: "homeWatchLater" },
   ];
@@ -778,7 +778,9 @@
   }
 
   function isHomePath(pathname) {
-    return HOME_TAB_DEFS.some((tab) => tab.path === pathname) || pathname === "/index.html";
+    return HOME_TAB_DEFS.some((tab) => tab.path === pathname) ||
+      pathname === "/index.html" ||
+      pathname === "/feed/subscriptions";
   }
 
   function isSearchPath(pathname) {
@@ -1241,9 +1243,11 @@
     refreshButton.setAttribute("aria-label", t("refreshFeed"));
     refreshButton.replaceChildren(createSvgIcon([["rect", {"x": "3.5", "y": "5.5", "width": "15", "height": "13", "rx": "4"}], ["path", {"d": "m9.5 9 5 3-5 3z"}], ["path", {"d": "M19.5 2.75v4M17.5 4.75h4"}]], "0 0 24 24"));
 
-    // The tab bar sits in its own full-width row: four segments do not fit
-    // between the brand and search icons on a phone-width header.
-    homeShell.append(header, tabBar, view);
+    // The tab bar sits in its own sticky row below the header: segments do not
+    // fit between the brand and search icons on a phone-width header.
+    const tabBarWrap = createElement("div", "ym-home-tabs-bar");
+    tabBarWrap.appendChild(tabBar);
+    homeShell.append(header, tabBarWrap, view);
     app.appendChild(homeShell);
     document.body.appendChild(refreshButton);
 
@@ -1310,7 +1314,7 @@
         status.replaceChildren();
         status.dataset.state = "error";
         const message = createElement("span", "ym-status-message");
-        message.textContent = activeTab === "subscriptions" ? t("subscriptionsSignInHint") : t("signInRequired");
+        message.textContent = t("signInRequired");
         const loginLink = createElement("a", "ym-button");
         loginLink.href = createYouTubeLoginUrl();
         loginLink.textContent = t("signIn");
@@ -3095,12 +3099,13 @@
           shouldPlay: Boolean(initialHandoff.shouldPlay),
         },
       };
-    } else if (Number(startSeconds) > 0) {
-      // A `?t=` resume point (continue-watching link): seek there on load.
+    } else {
+      // Autoplay: every fresh load starts playing; `?t=` resume points seek
+      // to their saved position first.
       pendingVideoRestore = {
         token: 1,
         state: {
-          currentTime: Number(startSeconds),
+          currentTime: Number(startSeconds) || 0,
           playbackRate: 1,
           shouldPlay: true,
         },
@@ -3426,6 +3431,18 @@
         }
       } catch {
       }
+    }
+
+    function isCurrentlyFullscreen() {
+      return Boolean(document.fullscreenElement || video.webkitDisplayingFullscreen);
+    }
+
+    // Auto-fullscreen: jump straight into fullscreen when playback starts.
+    // Mobile Safari can refuse without a user gesture, so the first tap on the
+    // player also plays and enters fullscreen in one gesture.
+    function autoEnterFullscreen() {
+      if (disposed || mode !== "video" || isCurrentlyFullscreen()) return;
+      enterFullscreen();
     }
 
     function setMediaTime(media, time) {
@@ -4184,6 +4201,17 @@
     audioPlayButton.addEventListener("click", toggleAudioPlayback);
     audioTimeline.addEventListener("input", seekAudioFromControl);
     fullscreenButton.addEventListener("click", enterFullscreen);
+    // Playback starting (autoplay, resume, or a track change) seeks fullscreen.
+    video.addEventListener("play", autoEnterFullscreen, { signal: playerAbort.signal });
+    let firstGestureUsed = false;
+    const onPlayerGesture = () => {
+      if (firstGestureUsed || isCurrentlyFullscreen()) return;
+      firstGestureUsed = true;
+      if (video.paused) video.play().catch(() => {});
+      autoEnterFullscreen();
+    };
+    videoBox.addEventListener("click", onPlayerGesture, { signal: playerAbort.signal });
+    videoBox.addEventListener("touchend", onPlayerGesture, { passive: true, signal: playerAbort.signal });
     audioPreviousButton.addEventListener("click", () => skipTrack(-1));
     audioNextButton.addEventListener("click", () => skipTrack(1));
     autoplayButton.addEventListener("click", toggleAutoplay);
@@ -6349,18 +6377,26 @@
         justify-self: end;
       }
 
+      .ym-home-tabs-bar {
+        /* Sticky tab row under the header, sized for thumbs on mobile. */
+        position: sticky;
+        top: calc(44px + env(safe-area-inset-top));
+        z-index: 39;
+        padding: 8px max(8px, env(safe-area-inset-right)) 8px max(8px, env(safe-area-inset-left));
+        background: var(--ym-bar);
+        -webkit-backdrop-filter: saturate(180%) blur(20px);
+        backdrop-filter: saturate(180%) blur(20px);
+      }
+
       .ym-home-tabs {
-        /* Own full-width row below the header: four segments do not fit
-           between the brand and search icons on a phone-width bar. */
         max-width: 1320px;
-        width: calc(100% - 16px);
-        margin: 8px auto 0;
-        box-sizing: border-box;
+        margin: 0 auto;
       }
 
       .ym-home-tabs .ym-segmented-option {
-        padding: 0 4px;
-        font-size: 12.5px;
+        height: 38px;
+        padding: 0 6px;
+        font-size: 15px;
       }
 
       .ym-segmented-option {

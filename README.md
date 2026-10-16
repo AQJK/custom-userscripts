@@ -25,11 +25,14 @@ Personal userscripts, maintained here as the single source of truth. Built for *
 
 ## youtube-mobile-lite — what's customized
 
-Based on GreasyFork script 600230 *"YouTube Mobile Lite: Simplified Home & Native Player"* v0.1.18 by hxueh (MIT). My fork (v0.2.0) adds:
+Based on GreasyFork script 600230 *"YouTube Mobile Lite: Simplified Home & Native Player"* v0.1.18 by hxueh (MIT). My fork adds:
 
+- **Three-tab home** — Recommended, History, Watch Later. The Subscriptions tab is removed; old `/feed/subscriptions` links land on Recommended.
 - **History tab** (`/feed/history`) — watch history as a "continue watching" feed. Partially watched videos show a red watched-progress bar and open at the saved position.
 - **Watch Later tab** (`/feed/watch-later`) — the Watch Later playlist (`WL`) as a feed; cards open the WL queue in the player with autoplay-next.
+- **Sticky, larger tab bar** — the tab row stays pinned under the header while scrolling, with bigger tap targets for mobile.
+- **Autoplay + auto-fullscreen** — videos start playing as soon as they load and jump straight into fullscreen; if Safari refuses without a user gesture, the first tap on the player plays and enters fullscreen in one gesture.
 - **`?t=` resume support** — the native player seeks to YouTube-style `t` timestamps (`95`, `95s`, `1h2m3s`).
-- Both tabs require a signed-in YouTube account (same as the Subscriptions tab).
+- History and Watch Later require a signed-in YouTube account.
 
 The fork is pinned to this repo (`@downloadURL`/`@updateURL`), so upstream GreasyFork updates will never overwrite it. Re-sync with upstream manually when wanted: https://greasyfork.org/scripts/600230
